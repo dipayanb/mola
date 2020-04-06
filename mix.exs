@@ -7,7 +7,11 @@ defmodule Mola.MixProject do
       version: "0.1.0",
       elixir: "~> 1.10",
       start_permanent: Mix.env() == :prod,
-      deps: deps()
+      deps: deps(),
+      dialyzer: [
+        plt_add_deps: :project
+        # ignore_warnings: ".dialyzer.ignore-warnings"
+      ]
     ]
   end
 
@@ -23,7 +27,9 @@ defmodule Mola.MixProject do
   defp deps do
     [
       {:amqp, "~> 1.4.0", runtime: false},
+      {:uuid, "~> 1.1"},
       {:credo, "~> 1.2", only: [:dev, :test], runtime: false},
+      {:dialyxir, "~> 1.0", only: [:dev], runtime: false},
       {:ex_doc, "~> 0.21", only: :dev, runtime: false},
       {:earmark, "~> 1.4.3", only: :dev, runtime: false}
     ]

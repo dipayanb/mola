@@ -1,5 +1,6 @@
 defmodule Mola.DummyConsumer do
   use Mola.Consumer
+  require Logger
 
   @impl true
   @spec config :: Mola.Consumer.Config.t()
@@ -15,8 +16,8 @@ defmodule Mola.DummyConsumer do
   @impl true
   def deliver(_channel, message) do
     Logger.info("Payload delivered.")
-    IO.puts(message.payload, label: "Payload >>>> ")
-    IO.puts(message.meta, label: "Meta >>>> ")
+    IO.inspect(message.payload, label: "Payload >>>> ")
+    IO.inspect(message.meta, label: "Meta >>>> ")
     :ok
   end
 end

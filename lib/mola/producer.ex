@@ -21,6 +21,8 @@ defmodule Mola.Producer do
   ```
   """
 
+  require Logger
+
   @doc """
   Callback for retriving the configuration for the producer
   """
@@ -38,78 +40,78 @@ defmodule Mola.Producer do
 
       @impl true
       def init(options) do
+        config = config()
         send(self(), {:bind, options})
-        {:ok, %{channel: nil}}
+        {:ok, %{channel: nil, producer_config: config, module: __MODULE__}}
       end
 
-      @doc """
-      Publishes a message to an exchange.
+      # Publishes a message to an exchange.
 
-      This method publishes a message to the exchange defined in the return value of `config/0`
-      with the routing key defined in the same.
+      # This method publishes a message to the exchange defined in the return value of `config/0`
+      # with the routing key defined in the same.
 
-      For the options refer this [link](https://hexdocs.pm/amqp/AMQP.Basic.html#publish/5-options)
-      """
-      def publish(message, options \\ []) do
+      # For the options refer this [link](https://hexdocs.pm/amqp/AMQP.Basic.html#publish/5-options)
+      defp publish(message, options \\ []) do
         GenServer.call(__MODULE__, {:publish, message, options})
       end
 
-      @impl true
-      def handle_info({:bind, options}, state) do
-        conn_module = options[:connection_module]
-        {:ok, conn} = conn_module.amqp_connection
-
-        case setup(conn) do
-          {:ok, channel} ->
-            {:noreply, %{state | channel: channel}}
-
-          _ ->
-            {:noreply, state}
-        end
-      end
-
-      @impl true
-      def handle_call(
-            {:publish, message, options},
-            _from,
-            %{channel: channel} = state
-          ) do
-        config = config()
-        options = Keyword.merge(options, config.options)
-        exchange = exchange_name(config.exchange)
-        reply = AMQP.Basic.publish(channel, exchange, config.routing_key, message, options)
-        {:reply, reply, state}
-      end
-
-      defp setup(conn) do
-        config = config()
-
-        with {:ok, channel} <- AMQP.Channel.open(conn),
-             :ok <- may_be_declare_exchange(channel, config.exchange) do
-          Logger.info("Producer channel created and exchange declared")
-          {:ok, channel}
-        end
-      end
-
-      defp may_be_declare_exchange(_channel, exchange) when is_binary(exchange) do
-        :ok
-      end
-
-      defp may_be_declare_exchange(channel, %Mola.Exchange.Config{} = exchange) do
-        options = [
-          durable: exchange.durable,
-          passive: exchange.passive,
-          arguments: exchange.exchange_arguments
-        ]
-
-        AMQP.Exchange.declare(channel, exchange.name, exchange.type, options)
-        :ok
-      end
-
-      defp exchange_name(exchange) when is_binary(exchange), do: exchange
-      defp exchange_name(%Mola.Exchange.Config{} = exchange), do: exchange.name
+      defdelegate handle_info(tuple, state), to: Mola.Producer
+      defdelegate handle_call(tuple, from, state), to: Mola.Producer
 
       defoverridable unquote(__MODULE__)
     end
   end
+
+  def handle_info({:bind, options}, %{producer_config: config} = state) do
+    conn_module = options[:connection_module]
+    {:ok, conn} = conn_module.amqp_connection
+
+    case setup(conn, config) do
+      {:ok, channel} ->
+        {:noreply, %{state | channel: channel}}
+
+      _ ->
+        {:noreply, state}
+    end
+  end
+
+  def handle_call(
+        {:publish, message, options},
+        _from,
+        %{channel: channel, producer_config: config, module: _module} = state
+      ) do
+    # config = module.config()
+    options = Keyword.merge(options, config.options)
+    exchange = Keyword.get(options, :exchange, exchange_name(config.exchange))
+    routing_key = Keyword.get(options, :routing_key, config.routing_key)
+    options = Keyword.drop(options, [:exchange, :routing_key])
+    reply = AMQP.Basic.publish(channel, exchange, routing_key, message, options)
+    {:reply, reply, state}
+  end
+
+  defp setup(conn, config) do
+    with {:ok, channel} <- AMQP.Channel.open(conn),
+         :ok <- may_be_declare_exchange(channel, config.exchange) do
+      Logger.info("Producer channel created and exchange declared")
+      {:ok, channel}
+    end
+  end
+
+  defp may_be_declare_exchange(_channel, exchange) when is_binary(exchange) do
+    :ok
+  end
+
+  defp may_be_declare_exchange(channel, %Mola.Exchange.Config{} = exchange) do
+    options = [
+      durable: exchange.durable,
+      passive: exchange.passive,
+      arguments: exchange.exchange_arguments
+    ]
+
+    AMQP.Exchange.declare(channel, exchange.name, exchange.type, options)
+    :ok
+  end
+
+  defp exchange_name(exchange) when is_binary(exchange), do: exchange
+  defp exchange_name(%Mola.Exchange.Config{} = exchange), do: exchange.name
 end

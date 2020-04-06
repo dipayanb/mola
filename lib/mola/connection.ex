@@ -63,8 +63,15 @@ defmodule Mola.Connection do
   end
 
   defmacro __before_compile__(env) do
+    require Logger
     consumers = Module.get_attribute(env.module, :consumers) |> Enum.map(&children/1)
     producers = Module.get_attribute(env.module, :producers) |> Enum.map(&children/1)
+
+    if !(Enum.empty?(consumers) || Enum.empty?(producers)) do
+      Logger.warn(
+        "Mola - As a best practice, producers and consumers should not share same connection."
+      )
+    end
 
     quote do
       def producers, do: {:ok, unquote(Macro.escape(producers))}
@@ -73,20 +80,20 @@ defmodule Mola.Connection do
     end
   end
 
-  defp children({module, opts}) do
-    Supervisor.child_spec({module, opts}, type: :worker)
+  defp children({module, id, opts}) do
+    Supervisor.child_spec({module, opts}, id: id, type: :worker)
   end
 
   defmacro consumer(module, opts \\ []) do
     quote do
-      @consumers {unquote(module),
+      @consumers {unquote(module), UUID.uuid4(),
                   unquote(Keyword.merge([connection_module: __CALLER__.module], opts))}
     end
   end
 
   defmacro producer(module, opts \\ []) do
     quote do
-      @producers {unquote(module),
+      @producers {unquote(module), UUID.uuid4(),
                   unquote(Keyword.merge([connection_module: __CALLER__.module], opts))}
     end
   end
