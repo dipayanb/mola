@@ -13,16 +13,12 @@ defmodule Mola.ConnectionManager do
   def init({module, opts}) do
     with otp_app <- Keyword.get(opts, :otp_app),
          {:ok, config} <- fetch_config(otp_app, module),
-         {:ok, connection_config} <- connection_config(config),
-         {:ok, consumer_configs} <- consumer_configs(config),
-         {:ok, producer_configs} <- producer_configs(config) do
+         {:ok, connection_config} <- connection_config(config) do
       children = [
         {module, connection_config},
         {Mola.ChannelsManager,
          %{
-           connection_module: module,
-           consumer_configs: consumer_configs,
-           producer_configs: producer_configs
+           connection_module: module
          }}
       ]
 
@@ -43,13 +39,5 @@ defmodule Mola.ConnectionManager do
   defp connection_config(config) do
     config = config |> Keyword.drop([:consumers, :producers])
     {:ok, config}
-  end
-
-  defp consumer_configs(config) do
-    {:ok, config[:consumers] || []}
-  end
-
-  defp producer_configs(config) do
-    {:ok, config[:producers] || []}
   end
 end
